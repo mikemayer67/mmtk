@@ -4,7 +4,7 @@ from setuptools import setup
 import mmttk
 
 setup(
-    name='Mikemayer67 Tkinter Widgets',
+    name='mmttk',
     version=mmttk.version,
     packages=['mmttk'],
     url='https://github.com/mikemayer67/ttk-widgets',
