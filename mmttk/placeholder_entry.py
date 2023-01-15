@@ -3,20 +3,70 @@ from tkinter import ttk
 from tkinter import font
 
 class PlaceholderEntry (ttk.Entry):
-    def __init__(self,parent,*args,placeholder,**kwargs):
-        self.placeholder_text = placeholder
+    """Custom widget derived from ttkEntry.  Provides "placeholder" text in an
+    empty entry field when it is not in focus.
+    """
+
+    def __init__(
+        self,
+        parent,
+        placeholder_text,
+        *args,
+        placeholder_font=None,
+        placeholder_italic=True,
+        placeholder_color=None,
+        **kwargs
+    ):
+        """
+        PlaceholderEntry contructor
+
+        Args:
+            parent (widget): same first argument as any tkinter widget
+            placeholder_text (str): Text to appear when the entry is empty
+            placeholder_font (see below): Font to use for the placeholder text (optional)
+            placeholder_italic (bool): Display placeholder text in italics (default=True)
+            placeholder_color (str): Color to use for the placeholder text (optional)
+
+            - The placholder font can be any of the following:
+              - a recognized font name
+              - a tkinter.font.Font instance
+              - a dictionary of font attributes
+            - The default font is based on the ttk.Entry font 
+              - If placeholder_italic is True, it will be modified to be italic
+              - Otherwise, it will be identical to the ttk.Entry font
+
+            - The default placeholder color is used if not specified.
+              - a 2:1 mix of the foreground and background colors
+
+            All other args or kwargs are passed along to the ttk.Entry
+            constructor.
+        """
+        self.placeholder_text = placeholder_text
         super().__init__(parent,*args,**kwargs)
 
         self.show = self['show']
 
-        self._determine_placeholder_color()
-        self._determine_placeholder_font()
+        self.entry_font = font.nametofont(str(self['font']))
+        if type(placeholder_font) is font.Font:
+            self.placeholder_font = placeholder_font
+        else:
+            self.placeholder_font = self._determine_placeholder_font(
+                placeholder_font,
+                placeholder_italic,
+            )
+
+        if placeholder_color is None:
+            self.placeholder_color = self._determine_placeholder_color()
+        else:
+            self.placeholder_color = placeholder_color
+
         self._create_placeholder_style()
 
-        self.show_placeholder()
+        self._show_placeholder()
 
-        self.bind('<FocusIn>',self.handle_focus_in)
-        self.bind('<FocusOut>',self.handle_focus_out)
+        self.bind('<FocusIn>',self._handle_focus_in)
+        self.bind('<FocusOut>',self._handle_focus_out)
+
 
     def _determine_placeholder_color(self):
         s = ttk.Style()
@@ -27,40 +77,46 @@ class PlaceholderEntry (ttk.Entry):
         fg = element_rgb('foreground')
         bg = element_rgb('background')
 
-        self.placeholder_color = (
-            '#' + 
-            ''.join(f"{(2*f+b)//3:02x}" for f,b in zip(fg,bg))
-        )
+        return '#' + ''.join(f"{(2*f+b)//3:02x}" for f,b in zip(fg,bg))
 
-    def _determine_placeholder_font(self):
-        self.entry_font = font.nametofont(str(self['font']))
-        font_attr = self.entry_font.actual()
-        font_attr['slant'] = 'italic'
-        self.placeholder_font = font.Font(**font_attr)
+    def _determine_placeholder_font(self,placeholder_font,italic):
+        if placeholder_font is None:
+            font_attr = self.entry_font.actual()
+            if italic:
+                font_attr['slant'] = 'italic'
+            return font.Font(**font_attr)
+        elif type(placeholder_font) is str:
+            return font.nametofont(placeholder_font)
+        elif type(placeholder_font) is dict:
+            return font.Font(**placeholder_font)
+        else:
+            # don't know how to handle it... let Tkinter deal with it.
+            return font
 
     def _create_placeholder_style(self):
+        self.placeholder_style = f"{id(self)}.TEntry"
         s = ttk.Style()
-        s.configure('Placeholder.TEntry', foreground=self.placeholder_color)
+        s.configure(self.placeholder_style, foreground=self.placeholder_color)
 
-    def show_placeholder(self):
+    def _show_placeholder(self):
         self.showing_placeholder = True
         self['show'] = ''
         self['font'] = self.placeholder_font
-        self['style'] = 'Placeholder.TEntry'
+        self['style'] = self.placeholder_style
         self.delete(0,'end')
         self.insert(0,self.placeholder_text)
 
-    def hide_placeholder(self):
+    def _hide_placeholder(self):
         self.showing_placeholder = False
         self['show'] = self.show
         self['font'] = self.entry_font
         self['style'] = 'TEntry'
         self.delete(0,'end')
 
-    def handle_focus_in(self,event=None):
+    def _handle_focus_in(self,event=None):
         if self.showing_placeholder:
-            self.hide_placeholder()
+            self._hide_placeholder()
 
-    def handle_focus_out(self,event=None):
+    def _handle_focus_out(self,event=None):
         if not self.get():
-            self.show_placeholder()
+            self._show_placeholder()
