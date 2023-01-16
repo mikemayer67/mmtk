@@ -3,7 +3,7 @@ from tkinter import ttk
 from tkinter import font
 
 class PlaceholderEntry (ttk.Entry):
-    """Custom widget derived from ttkEntry.  Provides "placeholder" text in an
+    """Custom widget derived from ttk.Entry.  Provides "placeholder" text in an
     empty entry field when it is not in focus.
     """
 
