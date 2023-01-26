@@ -8,8 +8,8 @@ from tkinter import ttk
 
 sys.path.insert(0, os.path.abspath('..'))
 
-from mmttk import PlaceholderEntry
-from mmttk import StatusLabel
+from mttk import PlaceholderEntry
+from mttk import StatusLabel
 
 mw = tk.Tk()
 
