@@ -1,7 +1,7 @@
-# Custome Tkinter ttk Widgets
+# Custom Tkinter Widgets
 
 This package contains a collection (*ok, only one so far*) of 
-custome Tkinter ttk widgets that I've created.  While I kept
+custom Tkinter tk and ttk widgets that I've created.  While I kept
 generality in mind, these were all created to meet a specific 
 need.  I am open to suggestions for exanding the capabilities
 of any of these, but make no apology for any currently lacking

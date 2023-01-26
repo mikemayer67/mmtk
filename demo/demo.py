@@ -8,7 +8,7 @@ from tkinter import ttk
 
 sys.path.insert(0, os.path.abspath('..'))
 
-from mmttk import PlaceholderEntry
+from mmtk import PlaceholderEntry
 
 mw = tk.Tk()
 

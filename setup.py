@@ -1,16 +1,16 @@
 from setuptools import find_packages
 from setuptools import setup
 
-import mmttk
+import mmtk
 
 setup(
-    name='mmttk',
-    version=mmttk.version,
-    packages=['mmttk'],
-    url='https://github.com/mikemayer67/ttk-widgets',
+    name='mmtk',
+    version=mmtk.version,
+    packages=['mmtk'],
+    url='https://github.com/mikemayer67/mmtk',
     license='unlicense',
     author='Michael Mayer',
     author_email='mikemayer67@vmwishes.com',
-    description='Collection of custom Tkinter ttk widgets',
+    description='Collection of custom Tkinter widgets',
     install_requires=['tk'],
 )
