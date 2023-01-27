@@ -3,7 +3,7 @@ from tkinter import ttk
 
 import re
 from copy import deepcopy
-from abs import abstractmethod
+from abc import abstractmethod
 
 class OptionError(ValueError):
     def __init__(self,err):
@@ -14,17 +14,14 @@ class AbstractOption:
 
     def __init__(self,name):
         self.name = name
-        self.values = dict()
 
     @abstractmethod
     def config_entry(self,state=None):
         pass
 
+    @abstractmethod
     def config_entries(self):
-        return [
-            self.config_entry(state)
-            for state in self.values.keys()
-        ]
+        pass
 
     @abstractmethod
     def update(self,value,state=None):
@@ -34,33 +31,40 @@ class AbstractOption:
     def parse_key(cls,key):
         states = "|".join(cls.states)
         try:
-            m = re.match(rf"({states})_?(.*)",option)
+            m = re.match(rf"({states})_?(.*)",key)
         except:
             raise OptionError(f"Cannot parse option key: {key}")
         if m:
             return m.group(2), m.group(1)
         else:
-            return option, None
+            return key, None
+
 
 class Synonym(AbstractOption):
     def __init__(self,synonym,target):
         super().__init__(synonym)
         self.target = target
-        self.values.update({state:None for state in (None,*self.states)})
 
     def config_entry(self,state=None):
+        state = state if state else ""
         return (f"{state}{self.name}",f"-{state}{self.target.name}")
+
+    def config_entries(self):
+        return [ self.config_entry(state) for state in (None,*self.states) ]
 
     def update(self,widget,value,state=None):
         self.target.update(widget,value,state)
 
+
 class FontOption(AbstractOption):
-    def __init__(self,option,defaults):
+    def __init__(self,option,defaults=None):
         super().__init__(option)
-        self.values.update({
-            state:defaults.get(state,{}).get(option,False)
-            for state in self.states
-        })
+        self.values = dict()
+        for state in self.states:
+            try:
+                self.values[state] = defaults[state][option]
+            except (KeyError,TypeError) as e:
+                self.values[state] = False
         self.defaults = deepcopy(self.values)
 
     def config_entry(self,state=None):
@@ -73,6 +77,10 @@ class FontOption(AbstractOption):
             self.defaults[state],
             self.values[state],
         )
+
+    def config_entries(self):
+        return [ self.config_entry(state) for state in self.states ]
+
     def update(self,widget,value,state=None):
         if state is None:
             raise OptionError(f"{self.name} option requires a status state modifier")
@@ -80,57 +88,78 @@ class FontOption(AbstractOption):
         if widget.state == state:
             widget.update_font()
 
+
 class TextOption(AbstractOption):
     def __init__(self):
         super().__init__("text")
+        self.value = ""
 
     def config_entry(self,state=None):
         if state:
             raise OptionError("text option does not support status states")
-        name,*attr,value = tk.Label().configure("text")
-        return (name,*attr,self.options[None])
+        return ("text","text","Text","",self.value)
+
+    def config_entries(self):
+        return [ self.config_entry() ]
 
     def update(self,widget,value,state=None):
         if state:
             raise OptionError("text option does not support status states")
-        self.options[None] = value
+        self.value = value
         if widget.state == None:
-            widget.configure(text=value)
+            widget.update_text()
 
 
 class Option(AbstractOption):
     def __init__(self,option,defaults):
         super().__init__(option)
-        self.values.update({
-            state:defaults.get(state,{}).get(option,None)
-            for state in (None,*self.states)
-        })
-        self.defaults = deepcopy(self.values)
+
+        self.values = dict()
+        self.defaults = dict()
+        self.inherited_config = tk.Label().configure(option)[:3]
+
+        try:
+            self.value = defaults[None][option]
+            self.default = self.value
+        except KeyError:
+            self.default = self.inherited_config[-2]
+            self.value = self.inherited_config[-1]
+
+        for state in self.states:
+            try:
+                value = defaults[state][option]
+                self.values[state] = value
+                self.defaults[state] = value
+            except KeyError:
+                pass
 
     def config_entry(self,state=None):
-        name,dbname,dbclass,default,value = tk.Label().configure(self.name)
+        name, dbname, dbclass = self.inherited_config
         if state is None:
-            default = self.defaults.get(state,default)
-            value = self.values.get(state,value)
+            default = self.default
+            value = self.value
         else:
-            name = f"{state}{self.name}"
-            dbname = f"{state}{self.name[0].upper()}{self.name[1:]}"
-            dbclass = f"{state.title()}{self.name[0].upper()}{self.name[1:]}"
-            default = self.defaults.get(None,default)
-            default = self.defaults.get(state,default)
-            candidate_values = (
-                self.values.get(state,None),
-                self.defaults.get(state,None),
-                self.values.get(None,None),
-                self.defaults.get(None,None),
+            name = f"{state}{name}"
+            dbname = f"{state}{dbname[0].upper()}{dbname[1:]}"
+            dbclass = f"{state.title()}{dbclass}"
+
+            default = self.defaults.get(state,self.default)
+            value = self.values.get(
+                state, 
+                self.defaults.get(
+                    state, 
+                    self.default if self.value is None else self.value
+                )
             )
-            value = next((v for v in candidate_values if v is not None),value)
         return (name, dbname, dbclass, default, value)
+
+    def config_entries(self):
+        return [ self.config_entry(state) for state in (None,*self.states) ]
 
     def update(self,widget,value,state=None):
         self.options[state] = value
         if widget.state == state:
-            widget.update_option(self.name,value)
+            widget.update_options()
 
 
 class Options:
@@ -160,7 +189,7 @@ class Options:
         self.options.update({
             option:Option(option,self.defaults)
             for option in (
-              'anchor', 'background', 'bold', 'borderwidth', 'cursor', 
+              'anchor', 'background', 'borderwidth', 'cursor', 
               'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
               'relief', 'underline', 'width', 'wraplength',
             )
@@ -203,11 +232,13 @@ class Options:
                 self.options[option].update(self.widget,value,state)
 
         else:
-            return sorted([
-                config 
-                for option in self.options.values()
-                for config in option.config_entries()
-            ])
+            return dict(
+                sorted([
+                    (config[0],config)
+                    for option in self.options.values()
+                    for config in option.config_entries()
+                ])
+            )
 
     def cget(self,key):
         return self.configure(key)[-1]
@@ -283,7 +314,7 @@ class StatusLabel (tk.Label):
         """configure widget resources
         This method overrides the method inherited from tk.Label
         """
-        self.options.configure(key,**kwargs)
+        return self.options.configure(key,**kwargs)
 
     config = configure
 
