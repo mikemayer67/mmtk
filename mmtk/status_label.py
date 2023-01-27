@@ -39,11 +39,29 @@ class AbstractOption:
         else:
             return key, None
 
+    @classmethod
+    def validate(cls,*,state=None):
+        if state is not None and state not in cls.states:
+            raise OptionError(f"Invalid status state: {state}")
 
 class Synonym(AbstractOption):
-    def __init__(self,synonym,target):
+    _synonym_map = {
+        "bg":"background",
+        "fg":"foreground",
+        "bd":"borderwidth",
+    }
+    recognized_synonyms = _synonym_map.keys()
+
+    def __init__(self,synonym,options):
         super().__init__(synonym)
-        self.target = target
+        try:
+            target_option = self._synonym_map[synonym]
+        except KeyError:
+            raise OptionError(f"Unknown synonym option: {synonym}")
+        try:
+            self.target = options[target_option]
+        except KeyError:
+            raise OptionError(f"Cannot find target option: {target_option}")
 
     def config_entry(self,state=None):
         state = state if state else ""
@@ -57,7 +75,11 @@ class Synonym(AbstractOption):
 
 
 class FontOption(AbstractOption):
+    recognized_options = ("italic","bold")
     def __init__(self,option,defaults=None):
+        if option not in self.recognized_options:
+            raise OptionError(f"Unrecognized font modifier: {option}")
+
         super().__init__(option)
         self.values = dict()
         for state in self.states:
@@ -68,6 +90,7 @@ class FontOption(AbstractOption):
         self.defaults = deepcopy(self.values)
 
     def config_entry(self,state=None):
+        self.validate(state=state)
         if state is None:
             raise OptionError(f"{self.name} option requires a status state modifier")
         return (
@@ -82,6 +105,7 @@ class FontOption(AbstractOption):
         return [ self.config_entry(state) for state in self.states ]
 
     def update(self,widget,value,state=None):
+        self.validate(state=state)
         if state is None:
             raise OptionError(f"{self.name} option requires a status state modifier")
         self.values[state] = value
@@ -94,52 +118,59 @@ class TextOption(AbstractOption):
         super().__init__("text")
         self.value = ""
 
-    def config_entry(self,state=None):
-        if state:
-            raise OptionError("text option does not support status states")
+    def config_entry(self):
         return ("text","text","Text","",self.value)
 
     def config_entries(self):
         return [ self.config_entry() ]
 
-    def update(self,widget,value,state=None):
-        if state:
-            raise OptionError("text option does not support status states")
+    def update(self,widget,value):
         self.value = value
         if widget.state == None:
             widget.update_text()
 
 
 class Option(AbstractOption):
-    def __init__(self,option,defaults):
+    recognized_options = (
+      'anchor', 'background', 'borderwidth', 'cursor', 
+      'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
+      'relief', 'underline', 'width', 'wraplength',
+    )
+    def __init__(self,option,defaults=None):
+        if option not in self.recognized_options:
+            raise OptionError(f"Unknown option: {option}")
+
         super().__init__(option)
 
         self.values = dict()
         self.defaults = dict()
-        self.inherited_config = tk.Label().configure(option)[:3]
+        self.inherited = tk.Label().configure(option)
 
         try:
             self.value = defaults[None][option]
             self.default = self.value
-        except KeyError:
-            self.default = self.inherited_config[-2]
-            self.value = self.inherited_config[-1]
+        except (KeyError,TypeError) as e:
+            self.default = self.inherited[-2]
+            self.value = self.inherited[-1]
 
         for state in self.states:
             try:
                 value = defaults[state][option]
                 self.values[state] = value
                 self.defaults[state] = value
-            except KeyError:
+            except (KeyError,TypeError) as e:
                 pass
 
     def config_entry(self,state=None):
-        name, dbname, dbclass = self.inherited_config
+        self.validate(state=state)
+
+        name,dbname,dbclass,default,value = self.inherited
         if state is None:
+            name = self.name
             default = self.default
             value = self.value
         else:
-            name = f"{state}{name}"
+            name = f"{state}{self.name}"
             dbname = f"{state}{dbname[0].upper()}{dbname[1:]}"
             dbclass = f"{state.title()}{dbclass}"
 
@@ -157,7 +188,9 @@ class Option(AbstractOption):
         return [ self.config_entry(state) for state in (None,*self.states) ]
 
     def update(self,widget,value,state=None):
-        self.options[state] = value
+        self.validate(state=state)
+
+        self.values[state] = value
         if widget.state == state:
             widget.update_options()
 
@@ -188,23 +221,15 @@ class Options:
 
         self.options.update({
             option:Option(option,self.defaults)
-            for option in (
-              'anchor', 'background', 'borderwidth', 'cursor', 
-              'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
-              'relief', 'underline', 'width', 'wraplength',
-            )
+            for option in Option.recognized_options
         })
         self.options.update({
-            synonym:Synonym(synonym,self.options[target])
-            for synonym,target in (
-                ("bg","background"),
-                ("fg","foreground"),
-                ("bd","borderwidth"),
-            )
+            synonym:Synonym(synonym,self.options)
+            for synonym in Synonym.recognized_synonyms
         })
         self.options.update({
             option:FontOption(option,self.defaults)
-            for option in ("italic","bold")
+            for option in FontOption.recognized_options
         })
         self.options["text"] = TextOption()
 

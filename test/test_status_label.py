@@ -17,12 +17,25 @@ from mmtk.status_label import (
 
 from copy import deepcopy
 
-class TestOptions(unittest.TestCase):
+class TestOptionClasses(unittest.TestCase):
 
     def setUp(self):
         self.states = ("info","warning","error")
 
-    def test_abstract(self):
+        self.font_defaults = {
+            "info": {"bold":"cow", "italic":True},
+            "warning": {"bold":"pig", "italic":False},
+            "error": {"color":"pink", },
+        }
+
+        self.option_defaults = {
+            "info":{"underline":"please", "nothing":"junk", "font":"curlz"},
+            "warning":{"underline":"maybe", "width":-5},
+            "whatever":{"underline":"???"},
+            None:{"font":"wingdingz"},
+        }
+
+    def test_abstract_option(self):
         result = AbstractOption.parse_key("test")
         self.assertEqual(result,("test",None))
 
@@ -37,95 +50,115 @@ class TestOptions(unittest.TestCase):
             result = AbstractOption.parse_key({1:1,2:3,3:"cat"})
 
 
-    def test_synonym(self):
-        # test config_entry
-        with mock.MagicMock() as tgt:
-            tgt.name = "test"
-            syn = Synonym("t",tgt)
-            self.assertEqual(syn.config_entry(), ("t","-test"))
-            for state in self.states:
-                self.assertEqual(syn.config_entry(state), (f"{state}t",f"-{state}test"))
-
-        # test config_entries
-        with mock.MagicMock() as tgt:
-            tgt.name = "lumpyness"
-            syn = Synonym("lf",tgt)
-            expected = {
-                ("lf","-lumpyness"), 
-                ("infolf","-infolumpyness"),
-                ("warninglf","-warninglumpyness"),
-                ("errorlf","-errorlumpyness"),
-            }
-            self.assertEqual( set(syn.config_entries()), expected )
-
-        # test that update chains to target option
-        with mock.MagicMock() as tgt:
-            tgt.name = "color"
-            syn = Synonym("c",tgt)
-            syn.update("widget",5)
-            self.assertEqual(tgt.update.call_count,1)
-            self.assertEqual(tgt.update.call_args.args,("widget",5,None))
-
-        with mock.MagicMock() as tgt:
-            tgt.name = "color"
-            syn = Synonym("c",tgt)
-            syn.update("widget",5,"info")
-            self.assertEqual(tgt.update.call_count,1)
-            self.assertEqual(tgt.update.call_args.args,("widget",5,"info"))
-
-
-    def test_font(self):
-        # test config_entry without defaults
-        fo = FontOption("curly")
-        for state in self.states:
-            expected = (
-                state + "curly",
-                state + "Curly",
-                state.title() + "Curly",
-                False,
-                False,
-            )
-            self.assertEqual( fo.config_entry(state), expected )
-
-        # test config_entry with defaults
-        fo_defaults = {
-            "info": {"size":"cow", "italic":True},
-            "warning": {"size":"pig", "bold":True},
-            "error": {"color":"pink", },
+    def test_synonym_config_entry(self):
+        synonyms = {
+            "bd":"borderwidth",
+            "bg":"background",
+            "fg":"foreground",
         }
-        fo = FontOption("size",fo_defaults)
+        for synonym,target in synonyms.items():
+            with mock.MagicMock() as tgt:
+                tgt.name = target
+                syn = Synonym(synonym,{target:tgt})
+                self.assertEqual(syn.config_entry(), (synonym,"-"+target))
+                for state in self.states:
+                    self.assertEqual(
+                        syn.config_entry(state), 
+                        (state+synonym, "-"+state+target)
+                    )
+
+    def test_synonym_config_entries(self):
+        synonyms = {
+            "bd":"borderwidth",
+            "bg":"background",
+            "fg":"foreground",
+        }
+        for synonym,target in synonyms.items():
+            with mock.MagicMock() as tgt:
+                tgt.name = target
+                syn = Synonym(synonym,{target:tgt})
+                expected = set(
+                    (state+synonym, "-"+state+target)
+                    for state in ("",*self.states)
+                )
+                self.assertEqual( set(syn.config_entries()), expected )
+
+    def test_synonym_update(self):
+        # test that update chains to target option
+        with mock.MagicMock() as tgt, mock.MagicMock() as widget:
+            tgt.name = "foreground"
+            syn = Synonym("fg",{"foreground":tgt})
+            syn.update(widget,"green")
+            self.assertEqual(tgt.update.call_count,1)
+            self.assertEqual(tgt.update.call_args.args,(widget,"green",None))
+
+        with mock.MagicMock() as tgt, mock.MagicMock() as widget:
+            tgt.name = "background"
+            syn = Synonym("bg",{"background":tgt})
+            syn.update(widget,"purple", "info")
+            self.assertEqual(tgt.update.call_count,1)
+            self.assertEqual(tgt.update.call_args.args,(widget,"purple","info"))
+
+    def test_synoynm_exceptions(self):
+        with mock.MagicMock() as tgt:
+            tgt.name = "background"
+            options = {"background":tgt}
+            with self.assertRaises(OptionError):
+                syn = Synonym("junk",options)
+            with self.assertRaises(OptionError):
+                syn = Synonym("fg",options)
+
+
+    def test_font_option_config_entry(self):
+        for option in ("italic","bold"):
+            fo = FontOption(option)
+            for state in self.states:
+                expected = (
+                    state + option,
+                    state + option.title(),
+                    state.title() + option.title(),
+                    False,
+                    False,
+                )
+                self.assertEqual( fo.config_entry(state), expected )
+
+    def test_font_option_defaults(self):
+        fo = FontOption("bold",self.font_defaults)
         self.assertEqual( 
             fo.config_entry("info"),
-            ("infosize","infoSize","InfoSize","cow","cow"),
+            ("infobold","infoBold","InfoBold","cow","cow"),
         )
         self.assertEqual( 
             fo.config_entry("warning"),
-            ("warningsize","warningSize","WarningSize","pig","pig"),
+            ("warningbold","warningBold","WarningBold","pig","pig"),
         )
         self.assertEqual( 
             fo.config_entry("error"),
-            ("errorsize","errorSize","ErrorSize",False,False),
+            ("errorbold","errorBold","ErrorBold",False,False),
         )
         with self.assertRaises(OptionError):
             result = fo.config_entry()
 
-        # test config_entries
+    def test_font_option_config_entries(self):
+        fo = FontOption("bold",self.font_defaults)
         expected = {
-            ("infosize","infoSize","InfoSize","cow","cow"),
-            ("warningsize","warningSize","WarningSize","pig","pig"),
-            ("errorsize","errorSize","ErrorSize",False,False),
+            ("infobold","infoBold","InfoBold","cow","cow"),
+            ("warningbold","warningBold","WarningBold","pig","pig"),
+            ("errorbold","errorBold","ErrorBold",False,False),
         }
         actual = fo.config_entries()
         self.assertEqual( set(actual), expected)
 
-        # test update
+    def test_font_option_update(self):
+        fo = FontOption("bold",self.font_defaults)
+
         with mock.MagicMock() as widget:
             widget.state = None
             fo.update(widget,"mini","info")
             expected = {
-                ("infosize","infoSize","InfoSize","cow","mini"),
-                ("warningsize","warningSize","WarningSize","pig","pig"),
-                ("errorsize","errorSize","ErrorSize",False,False),
+                ("infobold","infoBold","InfoBold","cow","mini"),
+                ("warningbold","warningBold","WarningBold","pig","pig"),
+                ("errorbold","errorBold","ErrorBold",False,False),
             }
             actual = fo.config_entries()
             self.assertEqual( set(actual), expected)
@@ -135,9 +168,9 @@ class TestOptions(unittest.TestCase):
             widget.state = "info"
             fo.update(widget,"breadbox","warning")
             expected = {
-                ("infosize","infoSize","InfoSize","cow","mini"),
-                ("warningsize","warningSize","WarningSize","pig","breadbox"),
-                ("errorsize","errorSize","ErrorSize",False,False),
+                ("infobold","infoBold","InfoBold","cow","mini"),
+                ("warningbold","warningBold","WarningBold","pig","breadbox"),
+                ("errorbold","errorBold","ErrorBold",False,False),
             }
             actual = fo.config_entries()
             self.assertEqual( set(actual), expected)
@@ -147,40 +180,44 @@ class TestOptions(unittest.TestCase):
             widget.state = "info"
             fo.update(widget,"giant","info")
             expected = {
-                ("infosize","infoSize","InfoSize","cow","giant"),
-                ("warningsize","warningSize","WarningSize","pig","breadbox"),
-                ("errorsize","errorSize","ErrorSize",False,False),
+                ("infobold","infoBold","InfoBold","cow","giant"),
+                ("warningbold","warningBold","WarningBold","pig","breadbox"),
+                ("errorbold","errorBold","ErrorBold",False,False),
             }
             actual = fo.config_entries()
             self.assertEqual( set(actual), expected)
             self.assertEqual(widget.update_font.call_count,1)
             self.assertEqual(widget.update_font.call_args.args,())
 
+    def test_font_option_exceptions(self):
+        with self.assertRaises(OptionError):
+            fo = FontOption("oops")
+
+        fo = FontOption("italic",self.font_defaults)
+        with self.assertRaises(OptionError):
+            result = fo.config_entry("nope")
+
         with mock.MagicMock() as widget, self.assertRaises(OptionError):
             widget.state=None
             fo.update(widget,"oops")
 
 
-    def test_text(self):
+    def test_text_option_config_entry(self):
         to = TextOption()
-
-        # test config_entry
         self.assertEqual(
             to.config_entry(),
             ("text","text","Text","",""),
         )
 
-        for state in self.states:
-            with self.assertRaises(OptionError):
-                result = to.config_entry(state)
-
-        # test config_entries
+    def test_text_option_config_entries(self):
+        to = TextOption()
         self.assertEqual(
             to.config_entries(),
             [("text","text","Text","","")],
         )
 
-        # test update
+    def test_text_option_config_entries(self):
+        to = TextOption()
         with mock.MagicMock() as widget:
             widget.state = None
             to.update(widget,"hello")
@@ -200,31 +237,111 @@ class TestOptions(unittest.TestCase):
             )
             self.assertEqual(widget.update_text.call_count,0)
 
-        for state in self.states:
-            with mock.MagicMock() as widget, self.assertRaises(OptionError):
-                widget.state = "info"
-                to.update(widget,"oops",state)
+
+    def test_option_config_entry(self):
+        ref_config = tk.Label().configure()
+        for option in ("anchor","background","relief","padx"):
+            opt = Option(option)
+            expected = ref_config[option]
+            self.assertEqual( opt.config_entry(), expected )
+            for state in self.states:
                 self.assertEqual(
-                    to.config_entries(),
-                    [("text","text","Text","","bye")],
+                    opt.config_entry(state),
+                    (
+                        state + expected[0],
+                        state + expected[1][0].title() + expected[1][1:],
+                        state.title() + expected[2],
+                        expected[3],
+                        expected[4],
+                    )
                 )
-                self.assertEqual(widget.update_text.call_count,0)
 
+    def expected_config(self,option):
+        rc = list(tk.Label().configure()[option])
+        try:
+            default = self.option_defaults[None][option]
+            rc[3] = default
+            rc[4] = default
+        except KeyError:
+            pass
+        return tuple(rc)
 
+    def expected_config_state(self,option,state):
+        rc = list(tk.Label().configure()[option])
+        try:
+            default = self.option_defaults[state][option]
+            rc[3] = default
+            rc[4] = default
+        except KeyError:
+            try:
+                default = self.option_defaults[None][option]
+                rc[3] = default
+                rc[4] = default
+            except KeyError:
+                pass
+        return (
+            state + rc[0],
+            state + rc[1][0].upper() + rc[1][1:],
+            state.title() + rc[2],
+            rc[3],
+            rc[4],
+        )
 
+    def test_option_defaults(self):
+        for option in ("underline","width","font"):
+            opt = Option(option,self.option_defaults)
+            self.assertEqual(
+                opt.config_entry(), 
+                self.expected_config(option) )
+            for state in self.states:
+                self.assertEqual(
+                    opt.config_entry(state),
+                    self.expected_config_state(option,state)
+                )
 
+    def test_option_update(self):
+        opt = Option("background")
+        rc = {
+            c[0]:(c[0],c[1],c[2],str(c[3]),c[4]) 
+            for c in opt.config_entries()
+        }
 
+        with mock.MagicMock() as widget:
+            widget.state = None
+            opt.update(widget,"green","info")
+            tmpl = rc["infobackground"]
+            rc["infobackground"] = (*tmpl[:-1],"green")
+            actual = {
+                c[0]:(c[0],c[1],c[2],str(c[3]),c[4])
+                for c in opt.config_entries()
+            }
+            self.assertEqual(actual,rc)
+            self.assertEqual(widget.update_options.call_count,0)
 
+        with mock.MagicMock() as widget:
+            widget.state = "warning"
+            opt.update(widget,"purple","warning")
+            tmpl = rc["warningbackground"]
+            rc["warningbackground"] = (*tmpl[:-1],"purple")
+            actual = {
+                c[0]:(c[0],c[1],c[2],str(c[3]),c[4])
+                for c in opt.config_entries()
+            }
+            self.assertEqual(actual,rc)
+            self.assertEqual(widget.update_options.call_count,1)
+            self.assertEqual(widget.update_options.call_args.args,())
 
-
-
-
-
-
-
-
-
-
+    def test_option_invalid_arguments(self):
+        with self.assertRaises(OptionError):
+            opt = Option("squishy")
+        with self.assertRaises(OptionError):
+            opt = Option("bd")
+        with self.assertRaises(OptionError):
+            opt = Option("background")
+            result = opt.config_entry("crawl")
+        with self.assertRaises(OptionError), mock.MagicMock() as w:
+            opt = Option("background")
+            opt.update(w,"red","fly")
 
 
 #class Tests(unittest.TestCase):
