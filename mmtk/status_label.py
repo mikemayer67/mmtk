@@ -16,6 +16,10 @@ class AbstractOption:
         self.name = name
 
     @abstractmethod
+    def value(self):
+        pass
+
+    @abstractmethod
     def config_entry(self,state=None):
         pass
 
@@ -63,15 +67,24 @@ class Synonym(AbstractOption):
         except KeyError:
             raise OptionError(f"Cannot find target option: {target_option}")
 
-    def config_entry(self,state=None):
-        state = state if state else ""
-        return (f"{state}{self.name}",f"-{state}{self.target.name}")
+    def config_entry(self,state=None,*,follow_link=True):
+        if follow_link:
+            return self.target.config_entry(state)
+        else:
+            state = state if state else ""
+            return (f"{state}{self.name}",f"-{state}{self.target.name}")
 
     def config_entries(self):
-        return [ self.config_entry(state) for state in (None,*self.states) ]
+        return [ 
+            self.config_entry(state,follow_link=False) 
+            for state in (None,*self.states)
+        ]
 
-    def update(self,widget,value,state=None):
-        self.target.update(widget,value,state)
+    def update(self,value,state=None):
+        self.target.update(value,state)
+
+    def value(self,state=None):
+        return self.target.value(state)
 
 
 class FontOption(AbstractOption):
@@ -104,30 +117,34 @@ class FontOption(AbstractOption):
     def config_entries(self):
         return [ self.config_entry(state) for state in self.states ]
 
-    def update(self,widget,value,state=None):
+    def update(self,value,state=None):
         self.validate(state=state)
         if state is None:
             raise OptionError(f"{self.name} option requires a status state modifier")
         self.values[state] = value
-        if widget.state == state:
-            widget.update_font()
+
+    def value(self,state=None):
+        self.validate(state=stete)
+        return self.values[state]
 
 
 class TextOption(AbstractOption):
     def __init__(self):
         super().__init__("text")
-        self.value = ""
+        self._value = ""
 
     def config_entry(self):
-        return ("text","text","Text","",self.value)
+        return ("text","text","Text","",self._value)
 
     def config_entries(self):
         return [ self.config_entry() ]
 
-    def update(self,widget,value):
-        self.value = value
-        if widget.state == None:
-            widget.update_text()
+    def update(self,value):
+        self._value = value
+
+    def value(self,state=None):
+        self.validate(state=state)
+        return self._value
 
 
 class Option(AbstractOption):
@@ -147,11 +164,12 @@ class Option(AbstractOption):
         self.inherited = tk.Label().configure(option)
 
         try:
-            self.value = defaults[None][option]
-            self.default = self.value
+            value = defaults[None][option]
+            self.defaults[None] = value
+            self.values[None] = value
         except (KeyError,TypeError) as e:
-            self.default = self.inherited[-2]
-            self.value = self.inherited[-1]
+            self.defaults[None] = self.inherited[-2]
+            self.values[None] = self.inherited[-1]
 
         for state in self.states:
             try:
@@ -159,7 +177,8 @@ class Option(AbstractOption):
                 self.values[state] = value
                 self.defaults[state] = value
             except (KeyError,TypeError) as e:
-                pass
+                self.values[state] = None
+                self.defaults[state] = None
 
     def config_entry(self,state=None):
         self.validate(state=state)
@@ -167,32 +186,35 @@ class Option(AbstractOption):
         name,dbname,dbclass,default,value = self.inherited
         if state is None:
             name = self.name
-            default = self.default
-            value = self.value
         else:
             name = f"{state}{self.name}"
             dbname = f"{state}{dbname[0].upper()}{dbname[1:]}"
             dbclass = f"{state.title()}{dbclass}"
 
-            default = self.defaults.get(state,self.default)
-            value = self.values.get(
-                state, 
-                self.defaults.get(
-                    state, 
-                    self.default if self.value is None else self.value
-                )
-            )
+        default = self.defaults[state]
+        if default is None:
+            default = self.defaults[None]
+
+        value = self.values[state]
+        if value is None:
+            value = self.defaults[state]
+        if value is None:
+            value = self.values[None]
+        if value is None:
+            value = self.defaults[None]
+            
         return (name, dbname, dbclass, default, value)
 
     def config_entries(self):
         return [ self.config_entry(state) for state in (None,*self.states) ]
 
-    def update(self,widget,value,state=None):
+    def update(self,value,state=None):
         self.validate(state=state)
-
         self.values[state] = value
-        if widget.state == state:
-            widget.update_options()
+
+    def value(self,state=None):
+        self.validate(state=state)
+        return self.values[state]
 
 
 class Options:
@@ -233,8 +255,7 @@ class Options:
         })
         self.options["text"] = TextOption()
 
-        for key,value in values.items():
-            self.configure({key,value})
+        self.configure(**values)
 
 
     def configure(self,key=None,**kwargs):
@@ -247,14 +268,20 @@ class Options:
         if key:
             try:
                 option,state = AbstractOption.parse_key(key)
-                return self.options[option].config_entry(state)
-            except KeyError:
+                if state:
+                    return self.options[option].config_entry(state)
+                else:
+                    return self.options[option].config_entry()
+            except (KeyError,TypeError) as e:
                 raise OptionError(f"invalid option: {key}")
 
         elif kwargs:
             for key,value in kwargs.items():
-                option,state = AbstractOption.parse_key(key)
-                self.options[option].update(self.widget,value,state)
+                try:
+                    option,state = AbstractOption.parse_key(key)
+                    self.options[option].update(value,state)
+                except KeyError:
+                    raise OptionError(f"invalid option: {key}")
 
         else:
             return dict(
