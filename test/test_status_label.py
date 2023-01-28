@@ -377,13 +377,14 @@ class TestOptions (unittest.TestCase):
         cls.states = ("info","warning","error")
 
         cls.base_options = {
-            "text",
+            #"text",
             *FontOption.recognized_options,
             *Option.recognized_options,
             *Synonym.recognized_synonyms,
         }
 
-        cls.all_options = {"text"}
+        cls.all_options = set()
+        #cls.all_options.add("text")
         cls.all_options.update([
             state+option
             for state in cls.states
@@ -515,6 +516,82 @@ class TestOptions (unittest.TestCase):
         self.assertEqual(options.cget("warningbackground"),"black")
         self.assertEqual(options.cget("errorbg"),"black")
         self.assertEqual(options.cget("errorbackground"),"black")
+
+    def test_font_method(self):
+        options = Options(
+            self.w,
+            infoitalic=True,
+            infobold=False,
+            warningitalic=True,
+            warningbold=True,
+            erroritalic=False,
+            errorbold=True,
+        )
+        base = tk.font.nametofont(options.font()).actual()
+        font = options.font("info").actual()
+        self.assertEqual(font['slant'],"italic")
+        for prop in ('family','weight','size'):
+            self.assertEqual(font[prop], base[prop])
+
+        font = options.font("warning").actual()
+        self.assertEqual(font['slant'],"italic")
+        self.assertEqual(font['weight'],"bold")
+        for prop in ('family','size'):
+            self.assertTrue(font[prop], base[prop])
+
+        font = options.font("error").actual()
+        self.assertEqual(font['weight'],"bold")
+        for prop in ('family','size','slant'):
+            self.assertTrue(font[prop], base[prop])
+
+        test_font = 'systemLabelFont'
+        options = Options(
+            self.w,
+            infofont=test_font,
+            infoitalic=True,
+        )
+        base = tk.font.nametofont(test_font).actual()
+        font = options.font("info").actual()
+        self.assertEqual(font['slant'],"italic")
+        for prop in ('family','weight','size'):
+            self.assertEqual(font[prop], base[prop])
+
+        for invalid_font in (5, self.w, options):
+            options = Options(self.w, warningfont=invalid_font, warningbold=True)
+            with self.assertRaises(OptionError):
+                font = options.font("warning")
+
+    def test_call(self):
+        options = Options(self.w)
+
+        config = options()
+        self.assertEqual( set(config.keys()), Option.recognized_options)
+        for k,v in config.items():
+            self.assertEqual(v,options.cget(k))
+
+        for state in self.states:
+            config = options(state)
+            self.assertEqual( set(config.keys()), Option.recognized_options)
+            for k,v in config.items():
+                self.assertEqual(v,options.cget(state+k))
+
+
+
+class TestStatusLabel(unittest.TestCase):
+    def setUp(self):
+        self.mw = tk.Tk()
+
+    def tearDown(self):
+        self.mw.destroy()
+
+    def test_default_init(self):
+        with patch.object(Options,"__new__") as mock_options:
+            sl = StatusLabel(self.mw)
+            self.assertEqual(sl.state,None)
+            self.assertEqual(sl.text,"")
+            self.assertEqual(mock_options.call_count,1)
+            self.assertEqual(mock_options.call_args_list[0].kwargs,{})
+
 
 
 

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter.font import Font, nametofont
 
 import re
 from copy import deepcopy
@@ -83,7 +83,7 @@ class Synonym(AbstractOption):
 
 
 class FontOption(AbstractOption):
-    recognized_options = ("italic","bold")
+    recognized_options = {"italic","bold"}
     def __init__(self,option,common_value=False,**state_values):
         common_value = bool(common_value)
         if option not in self.recognized_options:
@@ -148,11 +148,11 @@ class TextOption(AbstractOption):
 
 
 class Option(AbstractOption):
-    recognized_options = (
+    recognized_options = {
       'anchor', 'background', 'borderwidth', 'cursor', 
       'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
       'relief', 'underline', 'width', 'wraplength',
-    )
+    }
     def __init__(self,option,common_value=None,**state_values):
         if option not in self.recognized_options:
             raise OptionError(f"Unknown option: {option}")
@@ -230,8 +230,6 @@ class Options:
         },
     }
 
-
-
     def __init__(self,widget,**values):
         defaults = dict()
         for state,options in self.defaults.items():
@@ -256,7 +254,7 @@ class Options:
             option:FontOption(option,**defaults)
             for option in FontOption.recognized_options
         })
-        self.options["text"] = TextOption()
+        #self.options["text"] = TextOption()
 
         self.configure(**values)
 
@@ -296,7 +294,48 @@ class Options:
             )
 
     def cget(self,key):
-        return self.configure(key)[-1]
+        if key.endswith("font"):
+            _,state = AbstractOption.parse_key(key)
+            return self.font(state)
+        else:
+            return self.configure(key)[-1]
+
+    def font(self,state=None):
+        if state == None:
+            return self.configure("font")[-1]
+
+        font = self.configure(state+"font")[-1]
+        italic = self.cget(state+"italic")
+        bold = self.cget(state+"bold")
+
+        if not (bold or italic):
+            return font
+
+        if type(font) is str:
+            font = nametofont(font)
+        elif type(font) is dict:
+            font = Font(**font)
+
+        if not isinstance(font,Font):
+            raise OptionError(f"Cannot create font from: {font}")
+
+        font = font.actual()
+        if bold:
+            font['weight'] = tk.font.BOLD
+        if italic:
+            font['slant'] = tk.font.ITALIC
+
+        return Font(**font)
+
+    def __call__(self,state=""):
+        rval = dict()
+        for name,option in self.options.items():
+            if isinstance(option,Option):
+                rval[name] = self.cget(state+name)
+        return rval
+
+
+
 
 
 
@@ -385,7 +424,7 @@ class StatusLabel (tk.Label):
 
         super().__init__(parent,**kwargs)
         self.text = self["text"]
-        self.status = None
+        self.state = None
 
 #        """
 #        StatusLabel contructor
