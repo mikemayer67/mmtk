@@ -26,16 +26,24 @@ class TestOptionClasses(unittest.TestCase):
         self.states = ("info","warning","error")
 
         self.font_defaults = {
-            "info": {"bold":"cow", "italic":True},
-            "warning": {"bold":"pig", "italic":False},
-            "error": {"color":"pink", },
+            "bold": {
+                "info":"cow",
+                "warning":"pig",
+            },
+            "italic": {
+                "info":True,
+                "warning":False,
+            },
         }
 
         self.option_defaults = {
-            "info":{"underline":"please", "nothing":"junk", "font":"curlz"},
-            "warning":{"underline":"maybe", "width":-5},
-            "whatever":{"underline":"???"},
-            None:{"font":"wingdingz"},
+            "underline": {
+                "info":"please",
+                "warning":"maybe",
+                "whatever":"???",
+            },
+            "font": {"info":"curlz", None:"wingdingz"},
+            "width": {"warning":-5},
         }
 
     def test_abstract_option(self):
@@ -162,7 +170,9 @@ class TestOptionClasses(unittest.TestCase):
                 self.assertEqual( fo.config_entry(state), expected )
 
     def test_font_option_defaults(self):
-        fo = FontOption("bold",self.font_defaults)
+        defaults = deepcopy(self.font_defaults["bold"])
+        common = defaults.pop(None,None)
+        fo = FontOption("bold",**defaults)
         self.assertEqual( 
             fo.config_entry("info"),
             ("infobold","infoBold","InfoBold","cow","cow"),
@@ -179,7 +189,9 @@ class TestOptionClasses(unittest.TestCase):
             result = fo.config_entry()
 
     def test_font_option_config_entries(self):
-        fo = FontOption("bold",self.font_defaults)
+        defaults = deepcopy(self.font_defaults["bold"])
+        common = defaults.pop(None,None)
+        fo = FontOption("bold",**defaults)
         expected = {
             ("infobold","infoBold","InfoBold","cow","cow"),
             ("warningbold","warningBold","WarningBold","pig","pig"),
@@ -189,7 +201,9 @@ class TestOptionClasses(unittest.TestCase):
         self.assertEqual( set(actual), expected)
 
     def test_font_option_update(self):
-        fo = FontOption("bold",self.font_defaults)
+        defaults = deepcopy(self.font_defaults["bold"])
+        common = defaults.pop(None,None)
+        fo = FontOption("bold",common,**defaults)
 
         fo.update("mini","info")
         expected = {
@@ -222,7 +236,7 @@ class TestOptionClasses(unittest.TestCase):
         with self.assertRaises(OptionError):
             fo = FontOption("oops")
 
-        fo = FontOption("italic",self.font_defaults)
+        fo = FontOption("italic",**self.font_defaults)
         with self.assertRaises(OptionError):
             result = fo.config_entry("nope")
 
@@ -280,7 +294,7 @@ class TestOptionClasses(unittest.TestCase):
     def expected_config(self,option):
         rc = list(tk.Label().configure()[option])
         try:
-            default = self.option_defaults[None][option]
+            default = self.option_defaults[option][None]
             rc[3] = default
             rc[4] = default
         except KeyError:
@@ -290,16 +304,13 @@ class TestOptionClasses(unittest.TestCase):
     def expected_config_state(self,option,state):
         rc = list(tk.Label().configure()[option])
         try:
-            default = self.option_defaults[state][option]
-            rc[3] = default
-            rc[4] = default
-        except KeyError:
-            try:
-                default = self.option_defaults[None][option]
-                rc[3] = default
-                rc[4] = default
-            except KeyError:
-                pass
+            defaults = self.option_defaults[option]
+        except:
+            pass
+        else:
+            rc[3] = defaults.get(None,rc[3])
+            rc[4] = defaults.get(state,defaults.get(None,rc[4]))
+
         return (
             state + rc[0],
             state + rc[1][0].upper() + rc[1][1:],
@@ -310,7 +321,9 @@ class TestOptionClasses(unittest.TestCase):
 
     def test_option_defaults(self):
         for option in ("underline","width","font"):
-            opt = Option(option,self.option_defaults)
+            defaults = deepcopy(self.option_defaults.get(option,{}))
+            common = defaults.pop(None,None)
+            opt = Option(option,common,**defaults)
             self.assertEqual(
                 opt.config_entry(), 
                 self.expected_config(option) )
@@ -486,8 +499,7 @@ class TestOptions (unittest.TestCase):
                 f"Unexpected result type: {type(result)} for {option}"
             )
 
-    def test_option_cacscade(self):
-        import pdb; pdb.set_trace()
+    def test_option_cascade(self):
         options = Options(
             self.w,
             bg = "black",
