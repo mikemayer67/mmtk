@@ -9,41 +9,20 @@ class OptionError(ValueError):
     def __init__(self,err):
         super().__init__(err)
 
-class AbstractOption:
+StatusStates = ("info", "warning", "error")
+
+def parse_key(key):
+    states = "|".join(StatusStates)
+    try:
+        m = re.match(rf"({states})_?(.*)",key)
+    except:
+        raise OptionError(f"Cannot parse option key: {key}")
+
+    return (m.group(2), m.group(1)) if m else (key,None)
+
+
+class Synonym():
     states = ("info", "warning", "error")
-
-    def __init__(self,name):
-        self.name = name
-
-    @abstractmethod
-    def value(self):
-        pass
-
-    @abstractmethod
-    def config_entry(self,state=None):
-        pass
-
-    @abstractmethod
-    def config_entries(self):
-        pass
-
-    @abstractmethod
-    def update(self,value,state=None):
-        pass
-
-    @classmethod
-    def parse_key(cls,key):
-        states = "|".join(cls.states)
-        try:
-            m = re.match(rf"({states})_?(.*)",key)
-        except:
-            raise OptionError(f"Cannot parse option key: {key}")
-        if m:
-            return m.group(2), m.group(1)
-        else:
-            return key, None
-
-class Synonym(AbstractOption):
     _synonym_map = {
         "bg":"background",
         "fg":"foreground",
@@ -52,7 +31,7 @@ class Synonym(AbstractOption):
     recognized_synonyms = _synonym_map.keys()
 
     def __init__(self,synonym,options):
-        super().__init__(synonym)
+        self.name = synonym
         try:
             target_option = self._synonym_map[synonym]
         except KeyError:
@@ -72,7 +51,7 @@ class Synonym(AbstractOption):
     def config_entries(self):
         return [ 
             self.config_entry(state,follow_link=False) 
-            for state in (None,*self.states)
+            for state in (None,*StatusStates)
         ]
 
     def update(self,value,state=None):
@@ -82,125 +61,68 @@ class Synonym(AbstractOption):
         return self.target.value(state)
 
 
-class FontOption(AbstractOption):
-    recognized_options = {"italic","bold"}
-    def __init__(self,option,common_value=False,**state_values):
-        common_value = bool(common_value)
-        if option not in self.recognized_options:
-            raise OptionError(f"Unrecognized font modifier: {option}")
-
-        super().__init__(option)
-        self.values = dict()
-        self.defaults = dict()
-        for state in self.states:
-            default = state_values.get(state,common_value)
-            self.values[state] = default
-            self.defaults[state] = default
-
-    def config_entry(self,state=None):
-        if state is None:
-            raise OptionError(f"{self.name} option requires a status state modifier")
-        try:
-            return (
-                f"{state}{self.name}",
-                f"{state}{self.name.title()}",
-                f"{state.title()}{self.name.title()}",
-                self.defaults[state],
-                self.values[state],
-            )
-        except KeyError:
-            raise OptionError(f"Invalid state: {state}")
-
-    def config_entries(self):
-        return [ self.config_entry(state) for state in self.states ]
-
-    def update(self,value,state=None):
-        if state is None:
-            raise OptionError(f"{self.name} option requires a status state modifier")
-        try:
-            self.values[state] = value
-        except:
-            raise OptionError(f"Invalid state: {state}")
-
-    def value(self,state=None):
-        try:
-            return self.values[state]
-        except:
-            raise OptionError(f"Invalid state: {state}")
-
-
-class TextOption(AbstractOption):
-    def __init__(self):
-        super().__init__("text")
-        self.text = ""
-
-    def config_entry(self):
-        return ("text","text","Text","",self.text)
-
-    def config_entries(self):
-        return [ self.config_entry() ]
-
-    def update(self,value):
-        self.text = value
-
-    def value(self,state=None):
-        return self.text
-
-
-class Option(AbstractOption):
+class Option:
     recognized_options = {
       'anchor', 'background', 'borderwidth', 'cursor', 
       'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
       'relief', 'underline', 'width', 'wraplength',
     }
+    status_states = (None,*StatusStates)
+    option_type = "status"
     def __init__(self,option,common_value=None,**state_values):
+        self.name = option
+
         if option not in self.recognized_options:
-            raise OptionError(f"Unknown option: {option}")
+            raise OptionError(f"Unknown {self.option_type}: {option}")
 
-        super().__init__(option)
+        self._setup_config(common_value,**state_values)
 
-        self.inherited = tk.Label().configure(option)
+        self.values = dict()
+        for state in self.status_states:
+            self.values[state] = state_values.get(state,self.common)
+
+    def _setup_config(self,common_value,**state_values):
+        self.inherited = tk.Label().configure(self.name)
 
         if common_value is None:
-            common_value = self.inherited[-1]
+            self.common = self.inherited[-1]
             self.default = self.inherited[-2]
         else:
+            self.common = common_value
             self.default = common_value
 
-        self.values = {
-            state:state_values.get(state,common_value)
-            for state in (None,*self.states)
-        }
+    def _get_config(self,state):
+        value = self.values[state]
+        if value is None:
+            value = self.values[None]
+        if value is None:
+            value = self.default
+        return self.default, value
 
     def config_entry(self,state=None):
-        if state not in (None,*self.states):
-            raise OptionError(f"Invalid state: {state}")
+        if state not in self.status_states:
+            raise OptionError(f"Invalid option: {state or ''}{self.name}")
 
         name,dbname,dbclass,default,value = self.inherited
-        if state is None:
-            name = self.name
-        else:
+
+        try:
+            default,value = self._get_config(state)
+        except KeyError:
+            raise RuntimeError(f"Coding error... should not get here")
+
+        if state is not None:
             name = f"{state}{self.name}"
             dbname = f"{state}{dbname[0].upper()}{dbname[1:]}"
             dbclass = f"{state.title()}{dbclass}"
 
-        value = next(
-            ( 
-                v 
-                for v in (self.values[s] for s in (state,None)) 
-                if v is not None
-            ),
-            self.default
-        )
-            
-        return (name, dbname, dbclass, self.default, value)
+        return (name, dbname, dbclass, default, value)
 
     def config_entries(self):
-        return [ self.config_entry(state) for state in (None,*self.states) ]
+        return [ self.config_entry(state) for state in self.status_states ]
 
     def update(self,value,state=None):
-        if state and state not in self.states:
-            raise OptionError(f"Invalid state: {state}")
+        if state not in self.status_states:
+            raise OptionError(f"Invalid option: {state or ''}{self.name}")
         self.values[state] = value
 
     def value(self,state=None):
@@ -208,6 +130,26 @@ class Option(AbstractOption):
             return self.values[state]
         except KeyError:
             raise OptionError(f"Invalid state: {state}")
+
+
+class FontOption(Option):
+    recognized_options = {"italic","bold"}
+    status_states = StatusStates
+    option_type = "font"
+    def __init__(self,option,common_value=False,**state_values):
+        common_value = bool(common_value)
+        super().__init__(option,common_value,**state_values)
+        self.defaults = deepcopy(self.values)
+
+    def _setup_config(self,common_value,**state_values):
+        self.inherited = (
+            self.name, self.name, self.name.title(), common_value, common_value
+        )
+        self.common = common_value
+        self.default = common_value
+
+    def _get_config(self,state):
+        return self.defaults[state], self.values[state]
 
 
 class Options:
@@ -254,7 +196,6 @@ class Options:
             option:FontOption(option,**defaults)
             for option in FontOption.recognized_options
         })
-        #self.options["text"] = TextOption()
 
         self.configure(**values)
 
@@ -268,7 +209,7 @@ class Options:
 
         if key:
             try:
-                option,state = AbstractOption.parse_key(key)
+                option,state = parse_key(key)
                 if state:
                     return self.options[option].config_entry(state)
                 else:
@@ -279,7 +220,7 @@ class Options:
         elif kwargs:
             for key,value in kwargs.items():
                 try:
-                    option,state = AbstractOption.parse_key(key)
+                    option,state = parse_key(key)
                     self.options[option].update(value,state)
                 except KeyError:
                     raise OptionError(f"invalid option: {key}")
@@ -295,13 +236,13 @@ class Options:
 
     def cget(self,key):
         if key.endswith("font"):
-            _,state = AbstractOption.parse_key(key)
+            _,state = parse_key(key)
             return self.font(state)
         else:
             return self.configure(key)[-1]
 
     def font(self,state=None):
-        if state == None:
+        if not state:
             return self.configure("font")[-1]
 
         font = self.configure(state+"font")[-1]
@@ -330,13 +271,9 @@ class Options:
     def __call__(self,state=""):
         rval = dict()
         for name,option in self.options.items():
-            if isinstance(option,Option):
+            if type(option) == Option:
                 rval[name] = self.cget(state+name)
         return rval
-
-
-
-
 
 
 class StatusLabel (tk.Label):

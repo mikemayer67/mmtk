@@ -4,18 +4,20 @@ from unittest.mock import patch
 from unittest.mock import MagicMock
 
 import tkinter as tk
+from tkinter.font import Font
 import re
 from numbers import Number
 
 from mmtk.status_label import (
-    OptionError,
-    AbstractOption,
-    Synonym,
-    TextOption,
-    FontOption,
     Option,
+    Synonym,
+    FontOption,
     Options,
     StatusLabel,
+)
+from mmtk.status_label import (
+    OptionError,
+    parse_key,
 )
 
 from copy import deepcopy
@@ -47,18 +49,18 @@ class TestOptionClasses(unittest.TestCase):
         }
 
     def test_abstract_option(self):
-        result = AbstractOption.parse_key("test")
+        result = parse_key("test")
         self.assertEqual(result,("test",None))
 
         for state in ("info","warning","error"):
-            result = AbstractOption.parse_key(state+"test")
+            result = parse_key(state+"test")
             self.assertEqual(result,("test",state))
 
         with self.assertRaises(OptionError):
-            result = AbstractOption.parse_key(None)
+            result = parse_key(None)
 
         with self.assertRaises(OptionError):
-            result = AbstractOption.parse_key({1:1,2:3,3:"cat"})
+            result = parse_key({1:1,2:3,3:"cat"})
 
 
     def test_synonym_config_entry(self):
@@ -244,35 +246,6 @@ class TestOptionClasses(unittest.TestCase):
             fo.update("oops")
 
 
-    def test_text_option_config_entry(self):
-        to = TextOption()
-        self.assertEqual(
-            to.config_entry(),
-            ("text","text","Text","",""),
-        )
-
-    def test_text_option_config_entries(self):
-        to = TextOption()
-        self.assertEqual(
-            to.config_entries(),
-            [("text","text","Text","","")],
-        )
-
-    def test_text_option_config_entries(self):
-        to = TextOption()
-        to.update("hello")
-        self.assertEqual(
-            to.config_entries(),
-            [("text","text","Text","","hello")],
-        )
-
-        to.update("bye")
-        self.assertEqual(
-            to.config_entries(),
-            [("text","text","Text","","bye")],
-        )
-
-
     def test_option_config_entry(self):
         ref_config = tk.Label().configure()
         for option in ("anchor","background","relief","padx"):
@@ -377,14 +350,12 @@ class TestOptions (unittest.TestCase):
         cls.states = ("info","warning","error")
 
         cls.base_options = {
-            #"text",
             *FontOption.recognized_options,
             *Option.recognized_options,
             *Synonym.recognized_synonyms,
         }
 
         cls.all_options = set()
-        #cls.all_options.add("text")
         cls.all_options.update([
             state+option
             for state in cls.states
@@ -408,11 +379,16 @@ class TestOptions (unittest.TestCase):
     def test_default_init(self):
 
         mock_init_calls = set()
-        def mock_init(s,n):
+        def mock_init(s,n,*args,**kwargs):
             mock_init_calls.add(n)
             s.name = n
 
-        with patch.object(AbstractOption,"__init__",mock_init):
+        with (
+            patch.object(Option,"__init__",mock_init),
+            patch.object(FontOption,"__init__",mock_init),
+            patch.object(Synonym,"__init__",mock_init),
+            patch.object(Options,"configure") as mock_configure,
+        ):
             options = Options(self.w)
             self.assertEqual(mock_init_calls, self.base_options)
 
@@ -562,7 +538,7 @@ class TestOptions (unittest.TestCase):
                 font = options.font("warning")
 
     def test_call(self):
-        options = Options(self.w)
+        options = Options(self.w,infoitalic=True)
 
         config = options()
         self.assertEqual( set(config.keys()), Option.recognized_options)
@@ -573,7 +549,16 @@ class TestOptions (unittest.TestCase):
             config = options(state)
             self.assertEqual( set(config.keys()), Option.recognized_options)
             for k,v in config.items():
-                self.assertEqual(v,options.cget(state+k))
+                if k == "font":
+                    vfont = v
+                    if not isinstance(vfont,Font):
+                        vfont = tk.font.nametofont(v)
+                    ofont = options.cget(state+k)
+                    if not isinstance(ofont,Font):
+                        ofont = tk.font.nametofont(ofont)
+                    self.assertEqual(vfont.actual(), ofont.actual())
+                else:
+                    self.assertEqual(v,options.cget(state+k))
 
 
 
