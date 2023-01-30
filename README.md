@@ -16,3 +16,13 @@ placeholder is displayed in an italicised version of the Entry font
 and in a dimmed color.  Optionally, the exact font, whether or not to
 italicize the default font, and the placehold color may be specified
 when instantiating the PlaceholderEntry widget.
+
+## StatusLabel
+
+This is a subclass of tk.Label.  What makes it different is the
+notion of "status state".  The widget can be in one of four 
+distinct states: normal, info, warning, or error.  The widget
+provides variants on each of the standard tk.Label appearance
+options so that it can be configured to appear differently for
+each of these states.  The widget provides four methods which 
+can be used to modify the state and the text being shown.

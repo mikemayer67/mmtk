@@ -350,30 +350,27 @@ class TestOptions (unittest.TestCase):
         cls.states = ("info","warning","error")
 
         cls.base_options = {
-            *FontOption.recognized_options,
-            *Option.recognized_options,
-            *Synonym.recognized_synonyms,
+            *Option.recognized_options(),
+            *FontOption.recognized_options(),
+            *Synonym.recognized_synonyms(),
         }
 
         cls.all_options = set()
         cls.all_options.update([
             state+option
             for state in cls.states
-            for option in FontOption.recognized_options
+            for option in FontOption.recognized_options()
         ])
         cls.all_options.update([
             state+option
             for state in ("",*cls.states)
-            for option in Option.recognized_options
+            for option in Option.recognized_options()
         ])
         cls.all_options.update([
             state+synonym
             for state in ("",*cls.states)
-            for synonym in Synonym.recognized_synonyms
+            for synonym in Synonym.recognized_synonyms()
         ])
-
-    def setUp(self):
-        self.w = MagicMock()
 
 
     def test_default_init(self):
@@ -389,12 +386,11 @@ class TestOptions (unittest.TestCase):
             patch.object(Synonym,"__init__",mock_init),
             patch.object(Options,"configure") as mock_configure,
         ):
-            options = Options(self.w)
+            options = Options()
             self.assertEqual(mock_init_calls, self.base_options)
 
     def test_init_with_kwargs(self):
         options = Options(
-            self.w,
             infobg="green",
             warningbold=True,
             relief="ridge",
@@ -408,25 +404,24 @@ class TestOptions (unittest.TestCase):
     def test_init_exceptions(self):
         with self.assertRaises(OptionError):
             options = Options(
-                self.w,
                 junk=5,
             )
 
     def test_configure_query_all(self):
-        options = Options(self.w)
+        options = Options()
         result = options.configure()
         self.assertEqual(result.keys(), self.all_options)
         for key,config in result.items():
             self.assertEqual(key,config[0])
             option = re.sub(r"^(info|warning|error)","",key)
-            if option in Synonym.recognized_synonyms:
+            if option in Synonym.recognized_synonyms():
                 self.assertEqual(len(config),2)
             else:
                 self.assertEqual(len(config),5)
 
     def test_configure_query_option(self):
-        options = Options(self.w)
-        syn = "|".join(Synonym.recognized_synonyms)
+        options = Options()
+        syn = "|".join(Synonym.recognized_synonyms())
         syn_re = re.compile(rf"^(info|warning|error)?({syn})$")
         for option in self.all_options:
             result = options.configure(option)
@@ -441,7 +436,7 @@ class TestOptions (unittest.TestCase):
             self.assertEqual(result[0],name)
 
     def test_configure_set_options(self):
-        options = Options(self.w)
+        options = Options()
         options.configure(
             background="pink",
             errorrelief="groove",
@@ -454,7 +449,7 @@ class TestOptions (unittest.TestCase):
         self.assertEqual(options.cget("infoborderwidth"),12)
 
     def test_configure_query_exceptions(self):
-        options = Options(self.w)
+        options = Options()
         with self.assertRaises(OptionError):
             result = options.configure("junk")
         with self.assertRaises(OptionError):
@@ -464,7 +459,7 @@ class TestOptions (unittest.TestCase):
 
 
     def test_cget(self):
-        options = Options(self.w)
+        options = Options()
         for option in self.all_options:
             result = options.cget(option)
             assert any([
@@ -478,7 +473,6 @@ class TestOptions (unittest.TestCase):
 
     def test_option_cascade(self):
         options = Options(
-            self.w,
             bg = "black",
             infobg = None,
             warningbg = None,
@@ -495,7 +489,6 @@ class TestOptions (unittest.TestCase):
 
     def test_font_method(self):
         options = Options(
-            self.w,
             infoitalic=True,
             infobold=False,
             warningitalic=True,
@@ -522,7 +515,6 @@ class TestOptions (unittest.TestCase):
 
         test_font = 'systemLabelFont'
         options = Options(
-            self.w,
             infofont=test_font,
             infoitalic=True,
         )
@@ -532,22 +524,23 @@ class TestOptions (unittest.TestCase):
         for prop in ('family','weight','size'):
             self.assertEqual(font[prop], base[prop])
 
-        for invalid_font in (5, self.w, options):
-            options = Options(self.w, warningfont=invalid_font, warningbold=True)
+        for invalid_font in (5, options, MagicMock()):
+            options = Options(warningfont=invalid_font, warningbold=True)
             with self.assertRaises(OptionError):
                 font = options.font("warning")
 
     def test_call(self):
-        options = Options(self.w,infoitalic=True)
+        options = Options(infoitalic=True)
 
+        expected_options = Option.recognized_options()
         config = options()
-        self.assertEqual( set(config.keys()), Option.recognized_options)
+        self.assertEqual( set(config.keys()), expected_options)
         for k,v in config.items():
             self.assertEqual(v,options.cget(k))
 
         for state in self.states:
             config = options(state)
-            self.assertEqual( set(config.keys()), Option.recognized_options)
+            self.assertEqual( set(config.keys()), expected_options)
             for k,v in config.items():
                 if k == "font":
                     vfont = v
