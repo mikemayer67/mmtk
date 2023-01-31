@@ -5,7 +5,14 @@ import re
 from copy import deepcopy
 from abc import abstractmethod
 
-StatusStates = ("info", "warning", "error")
+
+################################################################################
+# Support values, exceptions, and functions
+################################################################################
+INFO = "info"
+WARNING = "warning"
+ERROR = "error"
+StatusStates = (INFO,WARNING,ERROR)
 
 class OptionError(ValueError):
     """The exception class used by StatusLabel"""
@@ -32,12 +39,30 @@ def parse_key(key):
     return (m.group(2), m.group(1)) if m else (key,None)
 
 
+################################################################################
+# StatusLabel wdiget options:
+# - Option
+# - FontOption
+# - Synonym
+################################################################################
+
+####################
+# Option
+####################
+
 class Option:
     """Base class for all StatusLabel configuration options.
 
     Maintains the default value for the option as well as the current
     option value for each of the 4 possible states of a StatuLabel
     widget.
+
+    Each corresponds to a single Tk widget option (e.g. background).
+    It then extends this option for each of the status states (e.g.
+    infobackground, warningbackground, and errorbackground).
+
+    The full list of recognized options can be optained from the
+    class method `recognized_options`
     """
 
     @classmethod
@@ -163,12 +188,26 @@ class Option:
             raise OptionError(f"Invalid state: {state}")
 
 
+####################
+# Font Option
+####################
+
 class FontOption(Option):
     """Font specific StatusLabel configuration options.
 
     More specifically, state specific font modifiers.  These allow for 
     a common base font whose slant or weight can be modified by state
     without needing to explicitly set a font option for each state.
+
+    Unlike Option, these options do not correspond to any existing
+    Tk widget options.  Rather, they provide a means for modifying
+    the font option.  
+
+    As these are meant to override the font, these options only apply
+    for the info, warning, and error status states. (e.g.
+    infoitalic, warningitalic, and erroritalic, but not just italic).
+
+    The associated value for all FontOptions is alwasys a boolean.
     """
 
     @classmethod
@@ -213,11 +252,22 @@ class FontOption(Option):
         return self.defaults[state], self.values[state]
 
 
+####################
+# Synonym
+####################
+
 class Synonym():
     """StatusLabel configuration option synonyms
 
     Maintains the base and state specific mappings between the recoginized
-    option synonyms and the corresponding StatusLabel widget options
+    option synonyms and the corresponding StatusLabel widget options.
+
+    Like with Option, these each correspond to Tk widget synonyms.
+    Similarly, each extends this synoym for each of the status states (e.g.
+    infobg, warningbg, or errorbg)
+
+    The full list of recognized synonyms can be optained from the
+    class method `recognized_synonyms`
     """
     _synonym_map = {
         "bg":"background",
@@ -305,6 +355,10 @@ class Synonym():
         return self.target.value(state)
 
 
+################################################################################
+# Options - Complete set of all Option, FontOption, and Synonym instances
+################################################################################
+
 class Options:
     """Collection of all of the options and synonyms associated with a
     given StatusLabel widget instance
@@ -345,9 +399,9 @@ class Options:
         self.options = dict()
 
         for option in Option.recognized_options():
-            self.options[option] = Option(option,**defaults)
+            self.options[option] = Option(option,**defaults.get(option,{}))
         for option in FontOption.recognized_options():
-            self.options[option] = FontOption(option,**defaults)
+            self.options[option] = FontOption(option,**defaults.get(option,{}))
         for synonym in Synonym.recognized_synonyms():
             self.options[synonym] = Synonym(synonym,self.options)
 
@@ -391,12 +445,16 @@ class Options:
                 raise OptionError(f"invalid option: {key}")
 
         elif kwargs:
+            modified_states = set()
             for key,value in kwargs.items():
                 try:
                     option,state = parse_key(key)
                     self.options[option].update(value,state)
                 except KeyError:
                     raise OptionError(f"invalid option: {key}")
+                else:
+                    modified_states.add(state)
+            return modified_states
 
         else:
             return dict(
@@ -447,7 +505,7 @@ class Options:
 
         return Font(**font)
 
-    def __call__(self,state=""):
+    def kwargs(self,state=""):
         """Returns a dictionary of all the currently set options for the
         specified state in a form suitable for passing to tk.Label's
         configure method.
@@ -457,9 +515,13 @@ class Options:
         rval = dict()
         for name,option in self.options.items():
             if type(option) == Option:
-                rval[name] = self.cget(state+name)
+                rval[name] = self.cget((state or "")+name)
         return rval
 
+
+################################################################################
+# StatusLabel - Finally, we get to the widget itself
+################################################################################
 
 class StatusLabel (tk.Label):
     """Custom widget derived from tk.Label which modifies its appearance
@@ -526,11 +588,37 @@ class StatusLabel (tk.Label):
     +---------------------+---------+---------+---------+---------+
     """
 
+    def __init__( self, parent, text="", **kwargs):
+        self.options = Options(**kwargs)
+
+        self._state = None
+        self._text = text
+
+        kwargs = self.options.kwargs()
+        super().__init__(parent, text=text, **kwargs)
+
+    @property
+    def state(self):
+        return self._state
+
+    @property
+    def text(self):
+        return self._text
+
+
     def configure(self,key=None,**kwargs):
         """configure widget resources
         This method overrides the method inherited from tk.Label
         """
-        return self.options.configure(key,**kwargs)
+        if key == "text":
+            return super().configure(key)
+
+        result = self.options.configure(key,**kwargs)
+        if type(result) is not set:
+            return result
+        if self._state in result:
+            config = self.options.kwargs(self._state)
+            super().configure(**config)
 
     config = configure
 
@@ -538,102 +626,38 @@ class StatusLabel (tk.Label):
         """Query widget configuration resource
         This method overrides the method inherited from tk.Label
         """
+        if key == "text":
+            return super().cget(key)
         return self.options.cget(key)
 
-    def __init__( self, parent, **kwargs):
+    def info(self,msg):
+        self._set_state(INFO,msg)
 
-        self.options = Options(self,**kwargs)
+    def warning(self,msg):
+        self._set_state(WARNING,msg)
 
-        super().__init__(parent,**kwargs)
-        self.text = self["text"]
-        self.state = None
+    def error(self,msg):
+        self._set_state(ERROR,msg)
 
-#        """
-#        StatusLabel contructor
-#
-#        Args:
-#            parent (widget): same first argument as any tkinter widget
-#            info_xxx (misc): appearance settings when status level is info
-#            warning_xxx (misc): appearance settings when status level is warning
-#            error_xxx (misc): appearance settings when status level is error
-#            xxx values
-#                background (color): background color
-#                foreground (color): foreground color
-#                font (str or tuple or tk.font.Font): label font
-#                italic (bool): italicize default font if font isn't specified
-#                bold (bool): bolden default font if font isn't specified
-#        """
-#        self.styles = dict()
-#        for status in ("info","warning","error"):
-#            self.styles[status] = dict()
-#            for attr in ("background","foreground","font","italic","bold"):
-#                key = f"{status}_{attr}"
-#                try:
-#                    self.styles[status][attr] = kwargs[key]
-#                    del kwargs[key]
-#                except KeyError:
-#                    self.styles[status][attr] = StatusLabel.defaults[status][attr]
-#
-#        for status,style in self.styles.items():
-#            self.styles[status]["font"] = self.resolve_font(style["font"])
-#
-#        super().__init__(parent,*args,**kwargs)
-#
-#        self.styles[None] = { 
-#            k:self.cget(k) for k in ("background","foreground","font")
-#        }
-#
-#    @staticmethod
-#    def resolve_font(font):
-#        if font is None:
-#            return font
-#
-#        if type(font) is str:
-#            font = tk.font.nametofont(font)
-#        elif type(font) is dict:
-#            font = tk.font.Font(**font)
-#
-#        if type(font) is tk.font.Font:
-#            return font
-#
-#        raise ValueError(f"Could not convert {font} to a tk.font.Font")
-#
-#
-#    def info(self,message):
-#        self.style("info")
-#        self['text'] = message
-#
-#    def warning(self,message):
-#        self.style("warning")
-#        self['text'] = message
-#
-#    def error(self,message):
-#        self.style("error")
-#        self['text'] = message
-#
-#    def clear(self):
-#        self.style(None)
-#        self['text'] = ""
-#
-#    def style(self,status):
-#        bg = self.styles[status]["background"]
-#        fg = self.styles[status]["foreground"]
-#        font = self.styles[status]["font"]
-#
-#        if font is None:
-#            font = self.styles[None]["font"]
-#            if type(font) is str:
-#                font = tk.font.nametofont(font)
-#            font_attr = font.actual()
-#            if self.styles[status]["italic"]:
-#                font_attr["slant"] = "italic"
-#            if self.styles[status]["bold"]:
-#                font_attr["weight"] = "bold"
-#            font = tk.font.Font(**font_attr)
-#
-#        self.configure(
-#            background=bg,
-#            foreground=fg,
-#            font=font,
-#        )
-#
+    def clear(self,text=None):
+        if text is not None:
+            self._text = text
+        if text is None:
+            self._text = ""
+        self._set_state(None,self._text)
+
+    def _set_state(self,state,msg):
+        if self._state != state:
+            self._state = state
+            config = self.options.kwargs(state)
+            super().config(**config)
+        super().config(text=msg)
+
+    def __getitem__(self,key):
+        return self.cget(key)
+
+    def __setitem__(self,key,value):
+        self.configure(key,value)
+
+
+
