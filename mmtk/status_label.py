@@ -1,3 +1,7 @@
+# Author: Michael A. Mayer
+# Copyright: 2023, VMWishes
+# License: UNLICENSE (http://unlicense.org)
+
 import tkinter as tk
 from tkinter.font import Font, nametofont
 
@@ -70,8 +74,8 @@ class Option:
         """Returns the list of all tk.Label options used by StatusLabel"""
         return {
             'anchor', 'background', 'borderwidth', 'cursor', 
-            'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
-            'relief', 'underline', 'width', 'wraplength',
+            'font', 'foreground', 'height', 'padx', 'pady', 
+            'relief', 'underline', 'width'
         }
     _status_statess =(None, *StatusStates)
     _option_type = "status"
@@ -570,8 +574,6 @@ class StatusLabel (tk.Label):
     +---------------------+---------+---------+---------+---------+
     | italic              |         |  False  |   True  |  False  |
     +---------------------+---------+---------+---------+---------+
-    | justify             |    x    |    x    |    x    |    x    |
-    +---------------------+---------+---------+---------+---------+
     | padx                |    x    |    x    |    x    |    x    |
     +---------------------+---------+---------+---------+---------+
     | pady                |    x    |    x    |    x    |    x    |
@@ -584,10 +586,7 @@ class StatusLabel (tk.Label):
     +---------------------+---------+---------+---------+---------+
     | width               |    x    |    x    |    x    |    x    |
     +---------------------+---------+---------+---------+---------+
-    | wraplength          |    x    |    x    |    x    |    x    |
-    +---------------------+---------+---------+---------+---------+
     """
-
     def __init__( self, parent, text="", **kwargs):
         self.options = Options(**kwargs)
 
@@ -604,7 +603,6 @@ class StatusLabel (tk.Label):
     @property
     def text(self):
         return self._text
-
 
     def configure(self,key=None,**kwargs):
         """configure widget resources

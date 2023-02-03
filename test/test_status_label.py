@@ -1,3 +1,7 @@
+# Author: Michael A. Mayer
+# Copyright: 2023, VMWishes
+# License: UNLICENSE (http://unlicense.org)
+
 import unittest
 from unittest import mock
 from unittest.mock import patch
