@@ -488,6 +488,21 @@ class TestOptions (unittest.TestCase):
                 f"Unexpected result type: {type(result)} for {option}"
             )
 
+    def test_cget_actual(self):
+        options = Options()
+        for option in Option.recognized_options():
+            for state in ("info","warning","error"):
+                result = options.cget(state+option,actual=True)
+                try:
+                    expected = Options._defaults[state][option]
+                    self.assertEqual(
+                        result,
+                        expected,
+                        f"{state}{option} doesn't match default value",
+                    )
+                except KeyError:
+                    self.assertIsNone(result,f"{state}{option} should be None")
+
     def test_option_cascade(self):
         options = Options(
             bg = "black",

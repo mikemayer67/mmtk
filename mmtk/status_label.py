@@ -106,10 +106,10 @@ class Option:
 
         self.values = dict()
         for state in self._status_statess:
-            self.values[state] = state_values.get(state,self.common)
+            self.values[state] = state_values.get(state,None)
 
     def _setup_config(self,common_value,**state_values):
-        """initializes the Option type specific common and default values"""
+        """initializes the Option type speci common and default values"""
         self.inherited = tk.Label().configure(self.name)
 
         if common_value is None:
@@ -124,6 +124,8 @@ class Option:
         value = self.values[state]
         if value is None:
             value = self.values[None]
+        if value is None:
+            value = self.common
         if value is None:
             value = self.default
         return self.default, value
@@ -241,6 +243,8 @@ class FontOption(Option):
         """
         common_value = bool(common_value)
         super().__init__(option,common_value,**state_values)
+        for state in (s for s,v in self.values.items() if v is None):
+            self.values[state] = common_value
         self.defaults = deepcopy(self.values)
 
     def _setup_config(self,common_value,**state_values):
@@ -469,8 +473,15 @@ class Options:
                 ])
             )
 
-    def cget(self,key):
+    def cget(self,key,*,actual=False):
         """Returns the current value for the specified option key"""
+        if actual:
+            try:
+                option,state = parse_key(key)
+                return self.options[option].values[state]
+            except (KeyError,TypeError,AttributeError) as e:
+                pass
+
         if key.endswith("font"):
             _,state = parse_key(key)
             return self.font(state)
@@ -493,13 +504,22 @@ class Options:
         if not (bold or italic):
             return font
 
-        if type(font) is str:
-            font = nametofont(font)
-        elif type(font) is dict:
-            font = Font(**font)
-
         if not isinstance(font,Font):
-            raise OptionError(f"Cannot create font from: {font}")
+            try:
+                if font.typename == 'font':
+                    font = font.string
+            except:
+                pass
+
+            if type(font) is str:
+                try:
+                    font = nametofont(font)
+                except:
+                    font = Font(family=font)
+            elif type(font) is dict:
+                font = Font(**font)
+            else:
+                raise OptionError(f"Cannot convert {font} to tk.Font")
 
         font = font.actual()
         if bold:
@@ -614,19 +634,19 @@ class StatusLabel (tk.Label):
         result = self.options.configure(key,**kwargs)
         if type(result) is not set:
             return result
-        if self._state in result:
+        if self._state in result or None in result:
             config = self.options.kwargs(self._state)
             super().configure(**config)
 
     config = configure
 
-    def cget(self,key):
+    def cget(self,key,*,actual=False):
         """Query widget configuration resource
         This method overrides the method inherited from tk.Label
         """
         if key == "text":
             return super().cget(key)
-        return self.options.cget(key)
+        return self.options.cget(key,actual=actual)
 
     def info(self,msg):
         self._set_state(INFO,msg)

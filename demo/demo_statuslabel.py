@@ -10,6 +10,17 @@ from tkinter import ttk
 from demo import Demo
 from mmtk import StatusLabel
 
+fonts = [
+    'TkDefaultFont',
+    'TkTextFont',
+    'TkFixedFont',
+    'TkMenuFont',
+    'TkHeadingFont',
+    'courier',
+    'helvetica',
+    'times',
+]
+
 config_values = {
     "anchor":"nw n ne w center e sw s se".split(" "),
     "background":"red orange yellow green blue purple".split(" "),
@@ -19,6 +30,7 @@ config_values = {
     "padx": [str(n) for n in range(10)],
     "pady": [str(n) for n in range(10)],
     "width": [str(n) for n in range(10,120,10)],
+    "font":fonts,
     "italic":("False","True"),
     "bold":("False","True"),
 }
@@ -47,7 +59,7 @@ class StatusLabelDemo(Demo):
         f = ttk.Frame(f)
         f.pack(side="right",expand=False)
 
-        for value,text in enumerate(("normal",*self.states[1:])):
+        for value,text in enumerate(("empty",*self.states[1:])):
             b = ttk.Radiobutton(
                 f,
                 text=text,
@@ -69,7 +81,7 @@ class StatusLabelDemo(Demo):
         header_font['weight'] = 'bold'
         header_font = tk.font.Font(**header_font)
 
-        for i,state in enumerate(("normal",*self.states[1:])):
+        for i,state in enumerate(("base",*self.states[1:])):
             ttk.Label(
                 f,
                 text=state,
@@ -99,12 +111,16 @@ class StatusLabelDemo(Demo):
                 if option in ("bold","italic") and state is None:
                     continue
 
+                cv = self.status_label.cget((state or "")+option, actual=True)
+                if type(cv) is bool:
+                    cv = "True" if cv else "False"
+
                 sv = tk.StringVar()
                 self.config[state][option] = sv
                 ttk.OptionMenu(
                     f,
                     sv,
-                    values[0],
+                    values[0] if cv is None else cv,
                     *values,
                     command=lambda v,s=state,o=option:self._update_config(o,s,v),
                 ).grid(
@@ -127,6 +143,8 @@ class StatusLabelDemo(Demo):
     def _update_config(self,option,state,value):
         if value == "-":
             value = None
+        if option in ("italic","bold"):
+            value = value=="True"
         config = { (state or "")+option : value }
         self.status_label.configure(**config)
 
