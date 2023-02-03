@@ -23,11 +23,6 @@ config_values = {
     "bold":("False","True"),
 }
 
-##            'anchor', 'background', 'borderwidth', 'cursor', 
-##            'font', 'foreground', 'height', 'justify', 'padx', 'pady', 
-##            'relief', 'underline', 'width',
-#
-#mw.mainloop()
 class StatusLabelDemo(Demo):
     def __init__(self,*args,**kwargs):
         self.states = (None,"info","warning","error")

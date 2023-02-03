@@ -7,9 +7,6 @@ from tkinter import ttk
 
 class Demo:
     def __init__(self,parent):
-        s = ttk.Style()
-        s.theme_use('classic')
-
         self.parent = parent
         self.frame = ttk.Frame(parent)
         self.frame.pack(fill="both",expand=True,padx=8,pady=8)
