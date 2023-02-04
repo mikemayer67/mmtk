@@ -1,3 +1,7 @@
+# Author: Michael A. Mayer
+# Copyright: 2023, VMWishes
+# License: UNLICENSE (http://unlicense.org)
+
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font

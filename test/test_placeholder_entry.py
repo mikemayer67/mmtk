@@ -1,10 +1,14 @@
+# Author: Michael A. Mayer
+# Copyright: 2023, VMWishes
+# License: UNLICENSE (http://unlicense.org)
+
 import unittest
 
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font
 
-from mmttk import PlaceholderEntry
+from mmtk import PlaceholderEntry
 
 class Tests(unittest.TestCase):
     def setUp(self):
