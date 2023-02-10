@@ -1,6 +1,6 @@
 # Custom Tkinter Widgets
 
-This package contains a collection (*ok, only one so far*) of 
+This package contains a collection (*ok, only two so far*) of 
 custom Tkinter tk and ttk widgets that I've created.  While I kept
 generality in mind, these were all created to meet a specific 
 need.  I am open to suggestions for exanding the capabilities
